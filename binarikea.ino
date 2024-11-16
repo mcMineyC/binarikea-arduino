@@ -2,6 +2,7 @@
 #include <Adafruit_Sensor.h>
 #include <Adafruit_NeoPixel.h>
 #include <WiFi.h>
+#include <WiFiAP.h>
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
 #include <ESPmDNS.h>
@@ -18,8 +19,8 @@ struct currTime{
 
 AsyncWebServer server(80);
 
-const char * ssid="Prancing_Pony";
-const char * wifipw="Aragorn!";
+const char * ssid = "Prancing_Pony";
+const char * wifipw = "Aragorn!";
 
 #define LED_TYPE NEO_GRB+NEO_KHZ800
 
@@ -48,12 +49,6 @@ std::array<std::array<bool, 4>, 4> blank = {
   decimalToBinary(0),
   decimalToBinary(0),
   decimalToBinary(0)
-};
-std::array<std::array<bool, 4>, 4> halfSuccess = {
-  decimalToBinary(0),
-  decimalToBinary(0),
-  decimalToBinary(15),
-  decimalToBinary(15)
 };
 
 bool timerActive = false;
@@ -100,14 +95,32 @@ void setup() {
     colorWipe(&strips[x], BLACK, 50);
   }
   displayState(0, blank, YELLOW, BLACK);
-  startWifi();
+  int wifiCode = startWifi(); // 0 is wifi good; 1 is wifi failed, ap good; -1 is both failed;
   setupServer();
   initTime("PST8PDT,M3.2.0,M11.1.0");
   // printLocalTime();
-  if(iCanHazSensor)
-    displayState(0, blank, GREEN, BLACK);
-  else
-    displayState(0, halfSuccess, RED, GREEN);
+  std::array<std::array<bool, 4>, 4> status = {
+    decimalToBinary(0),
+    decimalToBinary(0),
+    decimalToBinary(0),
+    decimalToBinary(0)
+  };
+
+  if(!iCanHazSensor){
+    status[0] = decimalToBinary(15);
+    status[1] = decimalToBinary(15);
+  }
+  if(wifiCode == 0){
+    status[2] = decimalToBinary(15);
+    status[3] = decimalToBinary(15);
+  }else if(wifiCode == 1){
+    status[2] = decimalToBinary(12);
+    status[3] = decimalToBinary(12);
+  }else if(wifiCode == -1){
+    status[2] = decimalToBinary(0);
+    status[3] = decimalToBinary(0);
+  }
+  displayState(0, status, GREEN, RED);
   delay(500);
 }
 
@@ -445,17 +458,31 @@ currTime getTime(){
 //   return sizeof(array) / sizeof(array[0]);
 // }
 
-void startWifi(){
+int startWifi(){
   WiFi.begin(ssid, wifipw);
   Serial.print(" - Connecting Wifi\n\t");
-  while (WiFi.status() != WL_CONNECTED) {
+  int status = 0;
+  long wifiStartMillis = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - wifiStartMillis < 4000) {
     Serial.print(".");
     delay(500);
   }
-  Serial.print("\n - Wifi RSSI=");
-  Serial.println(WiFi.RSSI());
-  Serial.print(" - ");
-  Serial.println(WiFi.localIP());
+  if(WiFi.status() != WL_CONNECTED){
+    Serial.println("\tFailed to connect to wifi.");
+    Serial.println(" - Starting AP");
+    status = 1;
+    if (!WiFi.softAP("BinarIKEA", "supersecure")) {
+      Serial.println("\tFailed to start AP");
+      status = -1;
+    }else{
+      Serial.println("\Started AP");
+    }
+  }else{ 
+    Serial.print("\n - Wifi RSSI=");
+    Serial.println(WiFi.RSSI());
+    Serial.print(" - ");
+    Serial.println(WiFi.localIP());
+  }
   Serial.println(" - Starting mDNS repsonder");
   if(MDNS.begin("binarikea")){
     MDNS.addService("http", "tcp", 80);
@@ -463,6 +490,7 @@ void startWifi(){
   }else{
     Serial.println("\tmDNS failed");
   }
+  return status;
 }
 
 void setupServer(){
