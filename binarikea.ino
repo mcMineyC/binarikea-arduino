@@ -489,7 +489,7 @@ int startWifi(){
     Serial.println("\tFailed to connect to wifi.");
     Serial.println(" - Starting AP");
     status = 1;
-    if (!WiFi.softAP("BinarIKEA", appw)) {
+    if (!WiFi.softAP("BinarIKEA", appwd)) {
       Serial.println("\tFailed to start AP");
       status = -1;
     }else{
