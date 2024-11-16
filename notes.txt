@@ -1,0 +1,16 @@
+Todo:
+ - Implement light timer
+ - Timer duration control
+ - Organize
+ X Test timer
+ - Properly offset first run from initial seconds (eg starts at 11:05:03, wait 57 not 60 seconds)
+   - Poll real time in shorter intervals?
+ - Source control this
+ - Add face-up mode(s)
+   - Timer
+     - Dismiss
+     - Set time
+   - Gyro sand!!!
+   - Face down is sleep
+ - Alarm?
+ - Power switch
