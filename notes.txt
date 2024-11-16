@@ -1,11 +1,8 @@
 Todo:
  - Implement light timer
- - Timer duration control
  - Organize
- X Test timer
  - Properly offset first run from initial seconds (eg starts at 11:05:03, wait 57 not 60 seconds)
    - Poll real time in shorter intervals?
- - Source control this
  - Add face-up mode(s)
    - Timer
      - Dismiss
@@ -14,3 +11,13 @@ Todo:
    - Face down is sleep
  - Alarm?
  - Power switch
+ X Timer duration control
+ X Test timer
+ X Source control this
+ X Companion app
+   X Change colors
+     X FG
+     X BG
+   X Change timer duration
+   X Stop timer
+   X Brightness
