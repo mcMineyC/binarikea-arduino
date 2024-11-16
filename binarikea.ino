@@ -9,6 +9,7 @@
 #include <bitset>
 #include <array>
 #include "time.h"
+#include "secrets.h"
 
 using namespace std;
 
@@ -18,9 +19,6 @@ struct currTime{
 };
 
 AsyncWebServer server(80);
-
-const char * ssid = "Prancing_Pony";
-const char * wifipw = "Aragorn!";
 
 #define LED_TYPE NEO_GRB+NEO_KHZ800
 
@@ -68,6 +66,7 @@ long lastTimerUpdateMillis = -1;
 // long lightTimerStartedMillis = -1;
 
 bool iCanHazSensor = false;
+bool iAmUseful = false;
 
 Adafruit_MPU6050 mpu;
 
@@ -75,6 +74,7 @@ void setup() {
   Serial.begin(115200);
   Serial.println("Binarikea Timer");
   Serial.println(" - Begin setup");
+  // Serial.println(" - Setting up EEPROM");
   Serial.println(" - Starting sensor");
   if(!mpu.begin()){
     iCanHazSensor = false;
@@ -97,7 +97,8 @@ void setup() {
   displayState(0, blank, YELLOW, BLACK);
   int wifiCode = startWifi(); // 0 is wifi good; 1 is wifi failed, ap good; -1 is both failed;
   setupServer();
-  initTime("PST8PDT,M3.2.0,M11.1.0");
+  if(wifiCode == 0)
+    initTime("PST8PDT,M3.2.0,M11.1.0");
   // printLocalTime();
   std::array<std::array<bool, 4>, 4> status = {
     decimalToBinary(0),
@@ -106,22 +107,23 @@ void setup() {
     decimalToBinary(0)
   };
 
-  if(!iCanHazSensor){
+  if(iCanHazSensor){
     status[0] = decimalToBinary(15);
     status[1] = decimalToBinary(15);
   }
   if(wifiCode == 0){
+    iAmUseful = true;
     status[2] = decimalToBinary(15);
     status[3] = decimalToBinary(15);
   }else if(wifiCode == 1){
-    status[2] = decimalToBinary(12);
-    status[3] = decimalToBinary(12);
+    status[2] = decimalToBinary(3);
+    status[3] = decimalToBinary(3);
   }else if(wifiCode == -1){
     status[2] = decimalToBinary(0);
     status[3] = decimalToBinary(0);
   }
-  displayState(0, status, GREEN, RED);
-  delay(500);
+  displayState(1, status, RED, GREEN);
+  delay(900);
 }
 
 // 1 is up
@@ -177,6 +179,7 @@ void loop() {
       break;
   }
   last_direction = direction;
+  delay(3); // free up cpu or summin
 }
 
 // END OF LOOP
@@ -243,7 +246,7 @@ void checkTimer(){
         updateSensor();
         determineDirection();
       }
-      flashStrips(YELLOW, MAGENTA, 400);
+      flashStrips(MAGENTA, BLACK, 500);
     }
     setStrips(BLACK);
     stopTimer();
@@ -378,6 +381,7 @@ void flashStrips(uint32_t fg, uint32_t bg, int time){
   setStrips(fg);
   delay(time);
   setStrips(bg);
+  delay(time);
 }
 void flashStrips(uint32_t fg, uint32_t bg, int time, int count){
   for(int x = 0; x < count; x++){
@@ -412,7 +416,21 @@ void initTime(String timezone){
   // Now we can set the real timezone
   setTimezone(timezone);
 }
+void setTime(int yr, int month, int mday, int hr, int minute, int sec, int isDst){
+  struct tm tm;
 
+  tm.tm_year = yr - 1900;   // Set date
+  tm.tm_mon = month-1;
+  tm.tm_mday = mday;
+  tm.tm_hour = hr;      // Set time
+  tm.tm_min = minute;
+  tm.tm_sec = sec;
+  tm.tm_isdst = isDst;  // 1 or 0
+  time_t t = mktime(&tm);
+  Serial.printf("Setting time: %s", asctime(&tm));
+  struct timeval now = { .tv_sec = t };
+  settimeofday(&now, NULL);
+}
 void printLocalTime(){
   struct tm timeinfo;
   if(!getLocalTime(&timeinfo)){
@@ -428,7 +446,7 @@ currTime getTime(){
   currTime ct;
   ct.hours = -1;
   ct.minutes = -1;
-  if(!getLocalTime(&timeinfo)){
+  if(!iAmUseful || !getLocalTime(&timeinfo)){
     Serial.println("Failed to get time");
     return ct;
   }
@@ -471,7 +489,7 @@ int startWifi(){
     Serial.println("\tFailed to connect to wifi.");
     Serial.println(" - Starting AP");
     status = 1;
-    if (!WiFi.softAP("BinarIKEA", "supersecure")) {
+    if (!WiFi.softAP("BinarIKEA", appw)) {
       Serial.println("\tFailed to start AP");
       status = -1;
     }else{
@@ -560,28 +578,25 @@ void setupServer(){
     lastTimerUpdateMillis = -1;
     request->send(200, "application/json", "{\"success\": true}");
   });
+  server.on("/time", HTTP_GET, [] (AsyncWebServerRequest *request) {
+    if(!request->hasParam("hours") || !request->hasParam("minutes") || !request->hasParam("seconds")){
+      request->send(500, "text/plain", "insufficient data");
+      return;
+    }
+    int hours = String(request->getParam("hours")->value()).toInt();
+    int minutes = String(request->getParam("minutes")->value()).toInt();
+    int seconds = String(request->getParam("seconds")->value()).toInt();
+    setTime(2024, 11, 15, hours, minutes, seconds, false);
+    iAmUseful = true;
+    lastClockCheckMillis = -1;
+    request->send(200, "application/json", "{\"success\": true}");
+  });
   server.on("/", HTTP_GET, [] (AsyncWebServerRequest *request) {
     request->send(200, "text/html", "<h1>Binarikea</h1>\n<p>/timerDuration?time=<em>seconds</em></p>\n<p>/[f|b]gColor?red=<em>redVal</em>&green=<em>greenVal</em>&blue=<em>blueVal</em></p>\n<p>/stopTimer</p>");
   });
   server.onNotFound(handleNotFound);
   server.begin();
   Serial.println("\t Server started");
-}
-
-void setTime(int yr, int month, int mday, int hr, int minute, int sec, int isDst){
-  struct tm tm;
-
-  tm.tm_year = yr - 1900;   // Set date
-  tm.tm_mon = month-1;
-  tm.tm_mday = mday;
-  tm.tm_hour = hr;      // Set time
-  tm.tm_min = minute;
-  tm.tm_sec = sec;
-  tm.tm_isdst = isDst;  // 1 or 0
-  time_t t = mktime(&tm);
-  Serial.printf("\t - Setting time: %s", asctime(&tm));
-  struct timeval now = { .tv_sec = t };
-  settimeofday(&now, NULL);
 }
 
 std::array<bool, 4> decimalToBinary(int num) {
